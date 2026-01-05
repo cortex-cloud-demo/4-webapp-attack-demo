@@ -1,0 +1,26 @@
+name: External_Exposure-Scan-WebApp
+
+on:
+  # push:
+  #  branches:
+  #    - main
+  workflow_dispatch:
+    inputs:
+      APP_URL:
+        description: 'URL of the web application to attack'
+        required: true
+        default: 'http://a568eccbd07e744ea98e9d7c9cd4a597-607046943.eu-west-3.elb.amazonaws.com/'
+
+
+jobs:
+    scan-job:
+        runs-on: ubuntu-latest
+          
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v3
+
+            - name: Scan Web Application to find vulnerabilities
+              run: |
+                docker run chrisley75/sstimap:1.0.3 \
+                  -u "${{ github.event.inputs.APP_URL }}page?name=attack"
