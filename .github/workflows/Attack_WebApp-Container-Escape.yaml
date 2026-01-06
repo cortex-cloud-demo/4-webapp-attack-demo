@@ -50,15 +50,18 @@ jobs:
                 DASHBOARD_URL="${{ steps.attack.outputs.dashboard_url }}"
                 TOKEN="${{ steps.attack.outputs.token }}"
                 
+                # Capturer la date
+                EXEC_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+                
                 # Créer le GitHub Summary
-                cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                cat >> $GITHUB_STEP_SUMMARY << EOF
                 # 🎯 Security Test Results
                 
                 ## ⚠️ Attack Summary
                 
-                **Target Application:** `${{ github.event.inputs.APP_URL }}`
+                **Target Application:** \`${{ github.event.inputs.APP_URL }}\`
                 
-                **Execution Time:** `$(date -u +"%Y-%m-%d %H:%M:%S UTC")`
+                **Execution Time:** \`${EXEC_TIME}\`
                 
                 **Status:** ✅ Attack Chain Completed
                 
