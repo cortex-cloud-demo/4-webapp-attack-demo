@@ -125,14 +125,14 @@ jobs:
                 
                 if [ ! -z "$TOKEN" ]; then
                   echo '```' >> $GITHUB_STEP_SUMMARY
-                  echo "ey$TOKEN" >> $GITHUB_STEP_SUMMARY
+                  echo "$TOKEN" >> $GITHUB_STEP_SUMMARY
                   echo '```' >> $GITHUB_STEP_SUMMARY
                   
                   # Décoder le token pour afficher des infos
                   echo "" >> $GITHUB_STEP_SUMMARY
                   echo "**Token Details:**" >> $GITHUB_STEP_SUMMARY
                   echo '```json' >> $GITHUB_STEP_SUMMARY
-                  echo "ey$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq '.' 2>/dev/null || echo "Token payload (base64 encoded)" >> $GITHUB_STEP_SUMMARY
+                  echo "$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq '.' 2>/dev/null || echo "Token payload (base64 encoded)" >> $GITHUB_STEP_SUMMARY
                   echo '```' >> $GITHUB_STEP_SUMMARY
                 else
                   echo "Token not captured in output" >> $GITHUB_STEP_SUMMARY
