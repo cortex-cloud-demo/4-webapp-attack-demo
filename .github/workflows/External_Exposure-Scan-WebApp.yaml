@@ -9,7 +9,7 @@ on:
       APP_URL:
         description: 'URL of the web application to attack'
         required: true
-        default: 'http://a568eccbd07e744ea98e9d7c9cd4a597-607046943.eu-west-3.elb.amazonaws.com/'
+        default: '<CHANGE ME>'
 
 
 jobs:

