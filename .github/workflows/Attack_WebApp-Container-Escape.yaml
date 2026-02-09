@@ -26,9 +26,12 @@ jobs:
                 
                 echo "$OUTPUT"
                 
-                # Vérifier si l'attaque a réussi en cherchant des preuves de déploiement K8s
-                if echo "$OUTPUT" | grep -q "Hacked Application URL is:" && \
-                   echo "$OUTPUT" | grep -q "namespace/kubernetes-dashboard created"; then
+                # Vérifier si l'attaque a réussi avec plusieurs indicateurs
+                # 1. Rechercher la confirmation RCE de sstimap
+                # 2. OU rechercher les URLs des backdoors déployés
+                if echo "$OUTPUT" | grep -q "Shell command execution:.*ok" || \
+                   (echo "$OUTPUT" | grep -q "Hacked Application URL is:" && \
+                    echo "$OUTPUT" | grep -qE "namespace/kubernetes-dashboard (created|unchanged)"); then
                   echo "attack_success=true" >> $GITHUB_OUTPUT
                   
                   # Extraire les informations importantes
