@@ -21,6 +21,494 @@ jobs:
               uses: actions/checkout@v3
 
             - name: Scan Web Application to find vulnerabilities
+              id: scan
               run: |
-                docker run chrisley75/sstimap:1.0.3 \
-                  -u "${{ github.event.inputs.APP_URL }}page?name=attack"
+                # Capture l'output complet du scan
+                OUTPUT=$(docker run chrisley75/sstimap:1.0.3 \
+                  -u "${{ github.event.inputs.APP_URL }}page?name=attack" 2>&1)
+                
+                echo "$OUTPUT"
+                
+                # Détecter si une vulnérabilité SSTI a été trouvée
+                if echo "$OUTPUT" | grep -q "Engine:"; then
+                  echo "vulnerability_found=true" >> $GITHUB_OUTPUT
+                  
+                  # Extraire les détails de la vulnérabilité
+                  ENGINE=$(echo "$OUTPUT" | grep "Engine:" | awk '{print $2}')
+                  INJECTION=$(echo "$OUTPUT" | grep "Injection:" | awk '{print $2}')
+                  CONTEXT=$(echo "$OUTPUT" | grep "Context:" | awk '{print $2}')
+                  OS=$(echo "$OUTPUT" | grep "OS:" | awk '{print $2}')
+                  TECHNIQUE=$(echo "$OUTPUT" | grep "Technique:" | awk '{print $2}')
+                  
+                  # Vérifier les capacités d'exploitation
+                  SHELL_EXEC=$(echo "$OUTPUT" | grep "Shell command execution:" | awk '{print $4}')
+                  BIND_SHELL=$(echo "$OUTPUT" | grep "Bind and reverse shell:" | awk '{print $5}')
+                  FILE_WRITE=$(echo "$OUTPUT" | grep "File write:" | awk '{print $3}')
+                  FILE_READ=$(echo "$OUTPUT" | grep "File read:" | awk '{print $3}')
+                  CODE_EVAL=$(echo "$OUTPUT" | grep "Code evaluation:" | awk '{print $3}')
+                  
+                  # Sauvegarder dans les outputs
+                  echo "engine=$ENGINE" >> $GITHUB_OUTPUT
+                  echo "injection=$INJECTION" >> $GITHUB_OUTPUT
+                  echo "context=$CONTEXT" >> $GITHUB_OUTPUT
+                  echo "os=$OS" >> $GITHUB_OUTPUT
+                  echo "technique=$TECHNIQUE" >> $GITHUB_OUTPUT
+                  echo "shell_exec=$SHELL_EXEC" >> $GITHUB_OUTPUT
+                  echo "bind_shell=$BIND_SHELL" >> $GITHUB_OUTPUT
+                  echo "file_write=$FILE_WRITE" >> $GITHUB_OUTPUT
+                  echo "file_read=$FILE_READ" >> $GITHUB_OUTPUT
+                  echo "code_eval=$CODE_EVAL" >> $GITHUB_OUTPUT
+                  
+                  # Déterminer le niveau de criticité
+                  if [ "$SHELL_EXEC" = "yes" ]; then
+                    echo "severity=CRITICAL" >> $GITHUB_OUTPUT
+                  elif [ "$FILE_WRITE" = "yes" ] || [ "$FILE_READ" = "yes" ] || [ "$CODE_EVAL" = "yes" ]; then
+                    echo "severity=HIGH" >> $GITHUB_OUTPUT
+                  else
+                    echo "severity=MEDIUM" >> $GITHUB_OUTPUT
+                  fi
+                else
+                  echo "vulnerability_found=false" >> $GITHUB_OUTPUT
+                  echo "severity=NONE" >> $GITHUB_OUTPUT
+                fi
+                
+                # Sauvegarder l'output complet
+                echo "$OUTPUT" > scan_output.log
+
+            - name: Generate Scan Summary
+              if: always()
+              run: |
+                # Lire l'output
+                OUTPUT=$(cat scan_output.log 2>/dev/null || echo "No output captured")
+                
+                # Récupérer les résultats du scan
+                VULN_FOUND="${{ steps.scan.outputs.vulnerability_found }}"
+                SEVERITY="${{ steps.scan.outputs.severity }}"
+                
+                # Capturer la date
+                SCAN_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+                
+                # Créer le GitHub Summary
+                cat >> $GITHUB_STEP_SUMMARY << EOF
+                # 🔍 Web Application Security Scan Report
+                
+                ## 📋 Scan Information
+                
+                **Target URL:** \`${{ github.event.inputs.APP_URL }}\`
+                
+                **Scan Time:** \`${SCAN_TIME}\`
+                
+                **Scanner:** SStimap (SSTI Detection Tool)
+                
+                EOF
+                
+                if [ "$VULN_FOUND" = "true" ]; then
+                  # Cas où une vulnérabilité a été trouvée
+                  ENGINE="${{ steps.scan.outputs.engine }}"
+                  INJECTION="${{ steps.scan.outputs.injection }}"
+                  CONTEXT="${{ steps.scan.outputs.context }}"
+                  OS="${{ steps.scan.outputs.os }}"
+                  TECHNIQUE="${{ steps.scan.outputs.technique }}"
+                  SHELL_EXEC="${{ steps.scan.outputs.shell_exec }}"
+                  BIND_SHELL="${{ steps.scan.outputs.bind_shell }}"
+                  FILE_WRITE="${{ steps.scan.outputs.file_write }}"
+                  FILE_READ="${{ steps.scan.outputs.file_read }}"
+                  CODE_EVAL="${{ steps.scan.outputs.code_eval }}"
+                  
+                  # Déterminer l'icône et la couleur selon la sévérité
+                  if [ "$SEVERITY" = "CRITICAL" ]; then
+                    STATUS_ICON="🔴"
+                    RISK_LEVEL="CRITICAL"
+                  elif [ "$SEVERITY" = "HIGH" ]; then
+                    STATUS_ICON="🟠"
+                    RISK_LEVEL="HIGH"
+                  else
+                    STATUS_ICON="🟡"
+                    RISK_LEVEL="MEDIUM"
+                  fi
+                  
+                  cat >> $GITHUB_STEP_SUMMARY << EOF
+                **Scan Result:** ${STATUS_ICON} **Vulnerability Detected**
+                
+                **Severity Level:** **${RISK_LEVEL}**
+                
+                ---
+                
+                ## ⚠️ Vulnerability Details
+                
+                ### SSTI (Server-Side Template Injection)
+                
+                | Property | Value |
+                |----------|-------|
+                | **Vulnerable Parameter** | \`name\` |
+                | **Template Engine** | ${ENGINE:-Unknown} |
+                | **Injection Payload** | \`${INJECTION:-N/A}\` |
+                | **Context** | ${CONTEXT:-text} |
+                | **OS Detection** | ${OS:-undetected} |
+                | **Exploitation Technique** | ${TECHNIQUE:-render} |
+                
+                ---
+                
+                ## 🎯 Exploitation Capabilities
+                
+                EOF
+                  
+                  # Afficher les capacités avec des icônes
+                  if [ "$SHELL_EXEC" = "yes" ]; then
+                    echo "### ❌ CRITICAL - Remote Code Execution Available" >> $GITHUB_STEP_SUMMARY
+                    echo "" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  cat >> $GITHUB_STEP_SUMMARY << EOF
+                | Capability | Status | Risk |
+                |------------|--------|------|
+                EOF
+                  
+                  # Shell command execution
+                  if [ "$SHELL_EXEC" = "yes" ]; then
+                    echo "| **Shell Command Execution** | ✅ YES | 🔴 Critical |" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "| Shell Command Execution | ❌ NO | ✅ Safe |" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  # Bind/Reverse shell
+                  if [ "$BIND_SHELL" = "yes" ]; then
+                    echo "| **Bind and Reverse Shell** | ✅ YES | 🔴 Critical |" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "| Bind and Reverse Shell | ❌ NO | ✅ Safe |" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  # File write
+                  if [ "$FILE_WRITE" = "yes" ]; then
+                    echo "| **File Write** | ✅ YES | 🟠 High |" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "| File Write | ❌ NO | ✅ Safe |" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  # File read
+                  if [ "$FILE_READ" = "yes" ]; then
+                    echo "| **File Read** | ✅ YES | 🟠 High |" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "| File Read | ❌ NO | ✅ Safe |" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  # Code evaluation
+                  if [ "$CODE_EVAL" = "yes" ]; then
+                    echo "| **Code Evaluation** | ✅ YES | 🟠 High |" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "| Code Evaluation | ❌ NO | ✅ Safe |" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                
+                ---
+                
+                ## 📊 Risk Assessment
+                
+                EOF
+                  
+                  if [ "$SEVERITY" = "CRITICAL" ]; then
+                    cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                ### 🔴 CRITICAL RISK
+                
+                **Impact:** Remote Code Execution (RCE) is possible
+                
+                **Attack Scenario:**
+                1. Attacker can execute arbitrary system commands
+                2. Potential container escape
+                3. Kubernetes cluster compromise
+                4. Data exfiltration
+                5. Lateral movement in the network
+                
+                **Immediate Action Required:** 
+                - 🚨 Take the application offline immediately
+                - 🔒 Patch the SSTI vulnerability
+                - 🔍 Investigate for signs of compromise
+                - 📝 Review access logs
+                
+                EOF
+                  elif [ "$SEVERITY" = "HIGH" ]; then
+                    cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                ### 🟠 HIGH RISK
+                
+                **Impact:** Limited exploitation capabilities detected
+                
+                **Potential Attack Vectors:**
+                - File system access (read/write)
+                - Information disclosure
+                - Application logic manipulation
+                - Potential privilege escalation
+                
+                **Recommended Actions:**
+                - ⚠️ Prioritize patching
+                - 🔍 Review application logs
+                - 🛡️ Implement additional security controls
+                - 📊 Monitor for exploitation attempts
+                
+                EOF
+                  else
+                    cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                ### 🟡 MEDIUM RISK
+                
+                **Impact:** SSTI vulnerability exists but exploitation is limited
+                
+                **Current State:**
+                - Template injection confirmed
+                - Sandboxed environment detected
+                - Limited capabilities available
+                
+                **Recommended Actions:**
+                - 🔧 Patch the SSTI vulnerability
+                - ✅ Current security controls are effective
+                - 📊 Continue monitoring
+                - 🔍 Perform regular security scans
+                
+                EOF
+                  fi
+                  
+                  cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                ---
+                
+                ## 🛡️ Remediation Steps
+                
+                ### 1. Immediate Fixes
+                
+                **Input Sanitization:**
+                ```python
+                # BAD - Vulnerable code
+                template = Template(user_input)
+                
+                # GOOD - Sanitized input
+                from markupsafe import escape
+                safe_input = escape(user_input)
+                template = Template(safe_template_string)
+                template.render(user_data=safe_input)
+                ```
+                
+                **Use Auto-escaping:**
+                ```python
+                # For Jinja2
+                env = Environment(autoescape=True)
+                
+                # For Nunjucks
+                nunjucks.configure({ autoescape: true })
+                ```
+                
+                ### 2. Security Hardening
+                
+                - ✅ Enable template auto-escaping
+                - ✅ Use allowlist for template variables
+                - ✅ Implement Content Security Policy (CSP)
+                - ✅ Add Web Application Firewall (WAF) rules
+                - ✅ Regular security audits and penetration testing
+                
+                ### 3. Detection & Monitoring
+                
+                - 📊 Log all template rendering operations
+                - 🚨 Alert on suspicious template patterns
+                - 🔍 Monitor for exploitation attempts
+                - ⏱️ Implement rate limiting
+                
+                ---
+                
+                ## 🎭 Attack Chain Visualization
+                
+                ```mermaid
+                graph TD
+                    A[User Input] -->|Unvalidated| B[Template Engine]
+                    B -->|SSTI Injection| C{Exploitation}
+                EOF
+                  
+                  if [ "$SHELL_EXEC" = "yes" ]; then
+                    cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                    C -->|Shell Execution| D[Remote Code Execution]
+                    D -->|Escalate| E[Container Escape]
+                    E -->|Access| F[K8s Cluster Compromise]
+                    
+                    style D fill:#ff6b6b
+                    style E fill:#ff6b6b
+                    style F fill:#ff6b6b
+                EOF
+                  else
+                    cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                    C -->|Blocked| D[Sandboxed Environment]
+                    D -.->|Failed| E[Limited Impact]
+                    
+                    style D fill:#90EE90
+                    style E fill:#ffd93d
+                EOF
+                  fi
+                  
+                  cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                ```
+                
+                ---
+                
+                ## 📚 References
+                
+                - [OWASP - Server-Side Template Injection](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server-side_Template_Injection)
+                - [PortSwigger - SSTI](https://portswigger.net/web-security/server-side-template-injection)
+                - [HackerOne - Template Injection](https://www.hackerone.com/knowledge-center/server-side-template-injection-ssti)
+                
+                EOF
+                
+                else
+                  # Cas où aucune vulnérabilité n'a été trouvée
+                  cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                **Scan Result:** ✅ **No Vulnerabilities Detected**
+                
+                **Severity Level:** ✅ **SECURE**
+                
+                ---
+                
+                ## ✅ Scan Results
+                
+                ### SSTI Detection
+                
+                ```
+                ✓ No Server-Side Template Injection vulnerabilities found
+                ✓ Input validation appears to be working correctly
+                ✓ Application passed security scan
+                ```
+                
+                ---
+                
+                ## 📊 Security Posture
+                
+                | Check | Status |
+                |-------|--------|
+                | SSTI Vulnerability | ✅ Not Detected |
+                | Template Engine Security | ✅ Pass |
+                | Input Validation | ✅ Pass |
+                
+                ---
+                
+                ## 💡 Recommendations
+                
+                ### Continue Best Practices
+                
+                - ✅ Maintain current security controls
+                - 🔄 Perform regular security scans
+                - 📊 Monitor application logs
+                - 🔍 Stay updated on new vulnerabilities
+                - 🛡️ Keep dependencies up to date
+                
+                ### Additional Security Measures
+                
+                1. **Implement Defense in Depth**
+                   - Web Application Firewall (WAF)
+                   - Content Security Policy (CSP)
+                   - Rate limiting
+                   - Input validation layers
+                
+                2. **Regular Security Assessments**
+                   - Quarterly penetration testing
+                   - Automated security scans in CI/CD
+                   - Dependency vulnerability scanning
+                   - Code security reviews
+                
+                3. **Security Monitoring**
+                   - Real-time threat detection
+                   - Security Information and Event Management (SIEM)
+                   - Anomaly detection
+                   - Incident response procedures
+                
+                ---
+                
+                ## 🎭 Security Architecture
+                
+                ```mermaid
+                graph TD
+                    A[User Input] -->|Validated| B[Input Sanitization]
+                    B -->|Clean Data| C[Template Engine]
+                    C -->|Safe Rendering| D[Output]
+                    
+                    E[WAF] -->|Filters| A
+                    F[CSP] -->|Protects| D
+                    
+                    style B fill:#90EE90
+                    style C fill:#90EE90
+                    style E fill:#90EE90
+                    style F fill:#90EE90
+                ```
+                
+                EOF
+                
+                fi
+                
+                # Section commune pour tous les cas
+                cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                ---
+                
+                ## 📝 Technical Scan Output
+                
+                <details>
+                <summary>Click to view full scan output</summary>
+                
+                ```
+                EOF
+                
+                cat scan_output.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Output log not available" >> $GITHUB_STEP_SUMMARY
+                
+                cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                ```
+                
+                </details>
+                
+                ---
+                
+                **Workflow Run:** `${{ github.run_id }}`  
+                **Triggered by:** `${{ github.actor }}`  
+                **Repository:** `${{ github.repository }}`  
+                **Next Scan:** Schedule regular scans to maintain security posture
+                EOF
+
+            - name: Upload Scan Logs
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                name: scan-logs
+                path: scan_output.log
+                retention-days: 30
+
+            - name: Create Security Issue
+              if: steps.scan.outputs.vulnerability_found == 'true' && steps.scan.outputs.severity == 'CRITICAL'
+              uses: actions/github-script@v7
+              with:
+                script: |
+                  const severity = '${{ steps.scan.outputs.severity }}';
+                  const engine = '${{ steps.scan.outputs.engine }}';
+                  const url = '${{ github.event.inputs.APP_URL }}';
+                  
+                  await github.rest.issues.create({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    title: `🔴 CRITICAL: SSTI Vulnerability Detected in ${url}`,
+                    body: `## 🚨 Critical Security Vulnerability Detected
+                  
+                  **Severity:** CRITICAL  
+                  **Vulnerability Type:** Server-Side Template Injection (SSTI)  
+                  **Affected URL:** ${url}  
+                  **Template Engine:** ${engine}  
+                  **Detection Date:** ${new Date().toISOString()}
+                  
+                  ### ⚠️ Impact
+                  
+                  Remote Code Execution (RCE) is possible on this application. Immediate action is required.
+                  
+                  ### 🔧 Immediate Actions Required
+                  
+                  1. Take the application offline or restrict access
+                  2. Review the [scan results](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+                  3. Implement the recommended patches
+                  4. Conduct a security audit
+                  
+                  ### 📊 Scan Details
+                  
+                  View full scan report: [Workflow Run #${context.runId}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+                  
+                  ---
+                  
+                  *This issue was automatically created by the security scan workflow.*`,
+                    labels: ['security', 'critical', 'vulnerability']
+                  });

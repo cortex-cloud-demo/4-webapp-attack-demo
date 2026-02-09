@@ -26,28 +26,43 @@ jobs:
                 
                 echo "$OUTPUT"
                 
-                # Extraire les informations importantes
-                HACKED_URL=$(echo "$OUTPUT" | grep "Hacked Application URL is:" | awk '{print $NF}')
-                DASHBOARD_URL=$(echo "$OUTPUT" | grep "Kubernetes Dashboard URL is:" | awk '{print $NF}')
-                TOKEN=$(echo "$OUTPUT" | grep -A 1 "Cluster Admin Token is" | tail -n 1)
-                
-                # Sauvegarder dans les outputs
-                echo "hacked_url=$HACKED_URL" >> $GITHUB_OUTPUT
-                echo "dashboard_url=$DASHBOARD_URL" >> $GITHUB_OUTPUT
-                echo "token=$TOKEN" >> $GITHUB_OUTPUT
+                # Vérifier si l'attaque a réussi
+                if echo "$OUTPUT" | grep -q "Shell command execution: yes"; then
+                  echo "attack_success=true" >> $GITHUB_OUTPUT
+                  
+                  # Extraire les informations importantes
+                  HACKED_URL=$(echo "$OUTPUT" | grep "Hacked Application URL is:" | awk '{print $NF}')
+                  DASHBOARD_URL=$(echo "$OUTPUT" | grep "Kubernetes Dashboard URL is:" | awk '{print $NF}')
+                  TOKEN=$(echo "$OUTPUT" | grep -A 1 "Cluster Admin Token is" | tail -n 1)
+                  
+                  # Sauvegarder dans les outputs
+                  echo "hacked_url=$HACKED_URL" >> $GITHUB_OUTPUT
+                  echo "dashboard_url=$DASHBOARD_URL" >> $GITHUB_OUTPUT
+                  echo "token=$TOKEN" >> $GITHUB_OUTPUT
+                else
+                  echo "attack_success=false" >> $GITHUB_OUTPUT
+                  
+                  # Extraire les détails de la vulnérabilité détectée
+                  ENGINE=$(echo "$OUTPUT" | grep "Engine:" | awk '{print $2}')
+                  INJECTION=$(echo "$OUTPUT" | grep "Injection:" | awk '{print $2}')
+                  CONTEXT=$(echo "$OUTPUT" | grep "Context:" | awk '{print $2}')
+                  
+                  echo "engine=$ENGINE" >> $GITHUB_OUTPUT
+                  echo "injection=$INJECTION" >> $GITHUB_OUTPUT
+                  echo "context=$CONTEXT" >> $GITHUB_OUTPUT
+                fi
                 
                 # Sauvegarder l'output complet pour le summary
                 echo "$OUTPUT" > attack_output.log
+                
             - name: Generate Attack Summary
               if: always()
               run: |
                 # Lire l'output
                 OUTPUT=$(cat attack_output.log 2>/dev/null || echo "No output captured")
                 
-                # Extraire les URLs et token
-                HACKED_URL="${{ steps.attack.outputs.hacked_url }}"
-                DASHBOARD_URL="${{ steps.attack.outputs.dashboard_url }}"
-                TOKEN="${{ steps.attack.outputs.token }}"
+                # Vérifier le succès de l'attaque
+                ATTACK_SUCCESS="${{ steps.attack.outputs.attack_success }}"
                 
                 # Capturer la date
                 EXEC_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
@@ -62,6 +77,15 @@ jobs:
                 
                 **Execution Time:** \`${EXEC_TIME}\`
                 
+                EOF
+                
+                if [ "$ATTACK_SUCCESS" = "true" ]; then
+                  # Cas où l'attaque a réussi
+                  HACKED_URL="${{ steps.attack.outputs.hacked_url }}"
+                  DASHBOARD_URL="${{ steps.attack.outputs.dashboard_url }}"
+                  TOKEN="${{ steps.attack.outputs.token }}"
+                  
+                  cat >> $GITHUB_STEP_SUMMARY << 'EOF'
                 **Status:** ✅ Attack Chain Completed
                 
                 ---
@@ -91,27 +115,27 @@ jobs:
                 
                 ### Hacked Application
                 EOF
-                
-                if [ ! -z "$HACKED_URL" ]; then
-                  echo "**URL:** [$HACKED_URL]($HACKED_URL)" >> $GITHUB_STEP_SUMMARY
-                else
-                  echo "**URL:** Not captured" >> $GITHUB_STEP_SUMMARY
-                fi
-                
-                cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                  
+                  if [ ! -z "$HACKED_URL" ]; then
+                    echo "**URL:** [$HACKED_URL]($HACKED_URL)" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "**URL:** Not captured" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  cat >> $GITHUB_STEP_SUMMARY << 'EOF'
                 
                 **Purpose:** Displays cluster information and provides kubectl access instructions
                 
                 ### Kubernetes Dashboard
                 EOF
-                
-                if [ ! -z "$DASHBOARD_URL" ]; then
-                  echo "**URL:** [$DASHBOARD_URL]($DASHBOARD_URL)" >> $GITHUB_STEP_SUMMARY
-                else
-                  echo "**URL:** Not captured" >> $GITHUB_STEP_SUMMARY
-                fi
-                
-                cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                  
+                  if [ ! -z "$DASHBOARD_URL" ]; then
+                    echo "**URL:** [$DASHBOARD_URL]($DASHBOARD_URL)" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "**URL:** Not captured" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  cat >> $GITHUB_STEP_SUMMARY << 'EOF'
                 
                 **Purpose:** Malicious dashboard with cluster-admin privileges
                 
@@ -124,23 +148,23 @@ jobs:
                 > **⚠️ CRITICAL:** This token provides full cluster-admin access
                 
                 EOF
-                
-                if [ ! -z "$TOKEN" ]; then
-                  echo '```' >> $GITHUB_STEP_SUMMARY
-                  echo "$TOKEN" >> $GITHUB_STEP_SUMMARY
-                  echo '```' >> $GITHUB_STEP_SUMMARY
                   
-                  # Décoder le token pour afficher des infos
-                  echo "" >> $GITHUB_STEP_SUMMARY
-                  echo "**Token Details:**" >> $GITHUB_STEP_SUMMARY
-                  echo '```json' >> $GITHUB_STEP_SUMMARY
-                  echo "$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq '.' 2>/dev/null || echo "Token payload (base64 encoded)" >> $GITHUB_STEP_SUMMARY
-                  echo '```' >> $GITHUB_STEP_SUMMARY
-                else
-                  echo "Token not captured in output" >> $GITHUB_STEP_SUMMARY
-                fi
-                
-                cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+                  if [ ! -z "$TOKEN" ]; then
+                    echo '```' >> $GITHUB_STEP_SUMMARY
+                    echo "$TOKEN" >> $GITHUB_STEP_SUMMARY
+                    echo '```' >> $GITHUB_STEP_SUMMARY
+                    
+                    # Décoder le token pour afficher des infos
+                    echo "" >> $GITHUB_STEP_SUMMARY
+                    echo "**Token Details:**" >> $GITHUB_STEP_SUMMARY
+                    echo '```json' >> $GITHUB_STEP_SUMMARY
+                    echo "$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq '.' 2>/dev/null || echo "Token payload (base64 encoded)" >> $GITHUB_STEP_SUMMARY
+                    echo '```' >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "Token not captured in output" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  
+                  cat >> $GITHUB_STEP_SUMMARY << 'EOF'
                 
                 ---
                 
@@ -174,6 +198,129 @@ jobs:
                 ✓ Download successful
                 ✓ Execution successful
                 ```
+                EOF
+                
+                else
+                  # Cas où l'attaque a échoué
+                  ENGINE="${{ steps.attack.outputs.engine }}"
+                  INJECTION="${{ steps.attack.outputs.injection }}"
+                  CONTEXT="${{ steps.attack.outputs.context }}"
+                  
+                  cat >> $GITHUB_STEP_SUMMARY << EOF
+                **Status:** ⚠️ Vulnerability Detected - Exploitation Failed
+                
+                ---
+                
+                ## 🔍 Vulnerability Analysis
+                
+                ### SSTI Detection Results
+                
+                | Property | Value |
+                |----------|-------|
+                | **Template Engine** | ${ENGINE:-Nunjucks} |
+                | **Injection Point** | \`name\` parameter |
+                | **Injection Payload** | ${INJECTION:-{{*}}} |
+                | **Context** | ${CONTEXT:-text} |
+                | **OS Detection** | ❌ Undetected |
+                
+                ---
+                
+                ## 🚫 Failed Capabilities
+                
+                The SSTI vulnerability was detected but has **limited exploitation potential**:
+                
+                ```
+                ✓ Template injection confirmed
+                ✗ Shell command execution: NO
+                ✗ Bind and reverse shell: NO
+                ✗ File write: NO
+                ✗ File read: NO
+                ✗ Code evaluation: NO
+                ```
+                
+                ---
+                
+                ## 📊 Risk Assessment
+                
+                ### Current Status
+                - **Vulnerability:** ⚠️ SSTI Present
+                - **Exploitability:** ✅ Low (sandboxed template)
+                - **Impact:** 🟡 Medium (information disclosure only)
+                
+                ### Possible Reasons for Limited Exploitation
+                
+                1. **Sandboxed Template Engine**
+                   - Template engine is running in restricted mode
+                   - Dangerous functions are disabled
+                
+                2. **WAF/Security Controls**
+                   - Web Application Firewall may be blocking payloads
+                   - Input sanitization in place
+                
+                3. **Container Security**
+                   - Limited container permissions
+                   - Network policies restricting outbound connections
+                
+                4. **Environment Restrictions**
+                   - Read-only filesystem
+                   - No shell binaries available
+                
+                ---
+                
+                ## 🛡️ Security Recommendations
+                
+                ### Immediate Actions
+                - ✅ **Good:** Template engine appears sandboxed
+                - ⚠️ **Warning:** SSTI vulnerability still exists
+                - 🔧 **Action Required:** Patch the template injection vulnerability
+                
+                ### Remediation Steps
+                
+                1. **Fix the SSTI vulnerability**
+                   \`\`\`
+                   - Sanitize user input before template rendering
+                   - Use auto-escaping in templates
+                   - Avoid direct template compilation from user input
+                   \`\`\`
+                
+                2. **Implement additional security layers**
+                   - Content Security Policy (CSP)
+                   - Input validation and sanitization
+                   - Regular security audits
+                
+                3. **Monitor for bypass attempts**
+                   - Log all template rendering errors
+                   - Alert on suspicious patterns
+                   - Implement rate limiting
+                
+                ---
+                
+                ## 🎭 Failed Attack Chain
+                
+                \`\`\`mermaid
+                graph LR
+                    A[Web App SSTI] -->|Detected| B[Template Injection]
+                    B -->|Blocked| C[Sandbox Restrictions]
+                    C -.->|Failed| D[RCE Attempt]
+                    C -.->|Failed| E[Container Escape]
+                    C -.->|Failed| F[K8s Compromise]
+                    
+                    style C fill:#90EE90
+                    style D fill:#FFB6C6
+                    style E fill:#FFB6C6
+                    style F fill:#FFB6C6
+                \`\`\`
+                
+                **Legend:**
+                - 🟢 Green: Security control successful
+                - 🔴 Red: Attack vector blocked
+                
+                EOF
+                
+                fi
+                
+                # Section commune pour les deux cas
+                cat >> $GITHUB_STEP_SUMMARY << 'EOF'
                 ---
                 
                 ## 📝 Technical Details
@@ -197,6 +344,7 @@ jobs:
                 **Triggered by:** `${{ github.actor }}`  
                 **Repository:** `${{ github.repository }}`
                 EOF
+                
             - name: Upload Attack Logs
               if: always()
               uses: actions/upload-artifact@v4
