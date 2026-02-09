@@ -37,7 +37,8 @@ jobs:
                   # Extraire les informations importantes
                   HACKED_URL=$(echo "$OUTPUT" | grep "Hacked Application URL is:" | awk '{print $NF}')
                   DASHBOARD_URL=$(echo "$OUTPUT" | grep "Kubernetes Dashboard URL is:" | awk '{print $NF}')
-                  TOKEN=$(echo "$OUTPUT" | grep -A 1 "Cluster Admin Token is" | tail -n 1)
+                  # Extraire le token JWT (commence par eyJ)
+                  TOKEN=$(echo "$OUTPUT" | grep -oE 'eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*' | head -n 1)
                   
                   # Sauvegarder dans les outputs
                   echo "hacked_url=$HACKED_URL" >> $GITHUB_OUTPUT
